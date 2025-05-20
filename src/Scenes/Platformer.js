@@ -3,21 +3,33 @@ class Platformer extends Phaser.Scene {
         super("platformerScene");
     }
 
+    preload() {
+        this.load.scenePlugin('AnimatedTiles', './lib/AnimatedTiles.js', 'animatedTiles', 'animatedTiles');
+    }
     init() {
         // variables and settings
         this.ACCELERATION = 400;
         this.DRAG = 500;    // DRAG < ACCELERATION = icy slide
         this.physics.world.gravity.y = 1500;
         this.JUMP_VELOCITY = -600;
+        this.SUPER_JUMP_VELOCITY = -1000;
+
         this.PARTICLE_VELOCITY = 50;
         this.SCALE = 2.0;
+        this.playerScore = 0;
+
+        this.powerUpCounter = 0;
+        this.powerUpDuration = 500;
+        
     }
 
     create() {
+        my.text.playerScoreText = this.add.text(-20,-20,"SCORE: "+ this.playerScore)
         // Create a new tilemap game object which uses 18x18 pixel tiles, and is
         // 45 tiles wide and 25 tiles tall.
         this.map = this.add.tilemap("platformer-level-1", 18, 18, 45, 25);
 
+        //this.sys.animatedTiles.init(map);
         // Add a tileset to the map
         // First parameter: name we gave the tileset in Tiled
         // Second parameter: key for the tilesheet (from this.load.image in Load.js)
@@ -32,20 +44,82 @@ class Platformer extends Phaser.Scene {
         });
 
         // TODO: Add createFromObjects here
+        // Find coins in the "Objects" layer in Phaser
+        // Look for them by finding objects with the name "coin"
+        // Assign the coin texture from the tilemap_sheet sprite sheet
+        // Phaser docs:
+        // https://newdocs.phaser.io/docs/3.80.0/focus/Phaser.Tilemaps.Tilemap-createFromObjects
+
+        this.coins = this.map.createFromObjects("Objects", {
+            name: "coin",
+            key: "tilemap_sheet",
+            frame: 151
+        });
+        this.powerUp = this.map.createFromObjects("Objects", {
+            name: "jumpPowerUp",
+            key: "tilemap_sheet",
+            frame: 11
+        });
+        this.coinList = this.map.getObjectLayer("Objects").objects;
+
+        this.spawn = this.map.getObjectLayer("Points-Layer").objects.find((obj) => obj.name === "spawnPoint");
         
 
-        // TODO: Add turn into Arcade Physics here
         
+        // TODO: Add turn into Arcade Physics here
+        // Since createFromObjects returns an array of regular Sprites, we need to convert 
+        // them into Arcade Physics sprites (STATIC_BODY, so they don't move) 
+        this.physics.world.enable(this.coins, Phaser.Physics.Arcade.STATIC_BODY);
+
+        this.physics.world.enable(this.powerUp, Phaser.Physics.Arcade.STATIC_BODY);
+
+        // Create a Phaser group out of the array this.coins
+        // This will be used for collision detection below.
+        this.coinGroup = this.add.group(this.coins);
+
+        my.vfx.sparkle = this.add.particles(0, 0, "kenny-particles", {
+            frame: ['smoke_03.png', 'light_01.png','light_02.png','light_03.png'],
+            // TODO: Try: add random: true
+            scale: {start: 0.03, end: 0.1},
+            // TODO: Try: maxAliveParticles: 8,
+            duration: 200,
+            lifespan: 100,
+            // TODO: Try: gravityY: -400,
+            alpha: {start: 1, end: 0.1}, 
+        });
+
+        my.vfx.sparkle.stop();
 
         // set up player avatar
-        my.sprite.player = this.physics.add.sprite(30, 345, "platformer_characters", "tile_0000.png");
+        my.sprite.player = this.physics.add.sprite(this.spawn.x, this.spawn.y, "platformer_characters", "tile_0000.png");
         my.sprite.player.setCollideWorldBounds(true);
 
         // Enable collision handling
         this.physics.add.collider(my.sprite.player, this.groundLayer);
 
         // TODO: Add coin collision handler
-        
+        // Handle collision detection with coins
+        my.text.playerScoreText.scrollFactorX = 1;
+        //set scroll
+
+        this.physics.add.overlap(my.sprite.player, this.powerUp, (obj1, obj2) => {
+            obj2.destroy(); // remove coin on overlap
+            this.powerUpCounter = this.powerUpDuration;
+            my.vfx.sparkle.x = obj2.x;
+            my.vfx.sparkle.y = obj2.y;
+            my.vfx.sparkle.start();
+        });
+
+        this.physics.add.overlap(my.sprite.player, this.coinGroup, (obj1, obj2) => {
+            this.playerScore++;
+            my.text.playerScoreText.setText("SCORE: "+ this.playerScore);
+           
+            obj2.destroy(); // remove coin on overlap
+            
+            my.vfx.sparkle.x = obj2.x;
+            my.vfx.sparkle.y = obj2.y;
+            my.vfx.sparkle.start();
+        });
 
         // set up Phaser-provided cursor key input
         cursors = this.input.keyboard.createCursorKeys();
@@ -59,25 +133,78 @@ class Platformer extends Phaser.Scene {
         }, this);
 
         // TODO: Add movement vfx here
-        
+        my.vfx.walking = this.add.particles(0, 0, "kenny-particles", {
+            frame: ['flare_01.png', 'smoke_09.png'], 
+            // TODO: Try: add random: true
+            scale: {start: 0.03, end: 0.1},
+            // TODO: Try: maxAliveParticles: 8,
+            lifespan: 350,
+            // TODO: Try: gravityY: -400,
+            alpha: {start: 1, end: 0.1}, 
+        });
+
+        my.vfx.walking.stop();
 
         // TODO: add camera code here
+        this.cameras.main.setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
+        
+        this.cameras.main.startFollow(my.sprite.player, true, 0.25, 0.25); // (target, [,roundPixels][,lerpX][,lerpY])
+        this.cameras.main.setDeadzone(50, 50);
+        this.cameras.main.setZoom(this.SCALE);
+
+        this.cameras.scoreCam = this.cameras.add();
+        this.cameras.scoreCam.startFollow(my.text.playerScoreText, true, 0.25, 0.25);
+        this.cameras.scoreCam.setPosition(-this.map.widthInPixels+170,-this.map.heightInPixels);
+        this.cameras.scoreCam.setZoom(this.SCALE*1.28);
+
         
 
-    }
+        this.anims.play('coinSpin',this.coins);
 
+        this.animatedTiles.init(this.map);
+
+    }
+    
     update() {
+        this.powerUpCounter--;
+        /*for(let elements in this.coins){
+            console.log(elements);
+
+            elements.anims.play('coinSpin');
+        }*/
         if(cursors.left.isDown) {
             my.sprite.player.setAccelerationX(-this.ACCELERATION);
             my.sprite.player.resetFlip();
             my.sprite.player.anims.play('walk', true);
             // TODO: add particle following code here
+            my.vfx.walking.startFollow(my.sprite.player, (my.sprite.player.displayWidth/2)-10, my.sprite.player.displayHeight/2-5, false);
+
+            my.vfx.walking.setParticleSpeed(this.PARTICLE_VELOCITY, 0);
+
+            // Only play smoke effect if touching the ground
+
+            if (my.sprite.player.body.blocked.down) {
+
+                my.vfx.walking.start();
+
+            }
 
         } else if(cursors.right.isDown) {
             my.sprite.player.setAccelerationX(this.ACCELERATION);
             my.sprite.player.setFlip(true, false);
             my.sprite.player.anims.play('walk', true);
             // TODO: add particle following code here
+            my.vfx.walking.startFollow(my.sprite.player, (my.sprite.player.displayWidth/2)-10, my.sprite.player.displayHeight/2-5, false);
+
+            my.vfx.walking.setParticleSpeed(-this.PARTICLE_VELOCITY, 0);
+
+            // Only play smoke effect if touching the ground
+
+            if (my.sprite.player.body.blocked.down) {
+
+                my.vfx.walking.start();
+
+            }
 
         } else {
             // Set acceleration to 0 and have DRAG take over
@@ -85,6 +212,7 @@ class Platformer extends Phaser.Scene {
             my.sprite.player.setDragX(this.DRAG);
             my.sprite.player.anims.play('idle');
             // TODO: have the vfx stop playing
+            my.vfx.walking.stop();
         }
 
         // player jump
@@ -93,7 +221,12 @@ class Platformer extends Phaser.Scene {
             my.sprite.player.anims.play('jump');
         }
         if(my.sprite.player.body.blocked.down && Phaser.Input.Keyboard.JustDown(cursors.up)) {
-            my.sprite.player.body.setVelocityY(this.JUMP_VELOCITY);
+            if(this.powerUpCounter < 0){
+                my.sprite.player.body.setVelocityY(this.JUMP_VELOCITY);
+            }else{
+                my.sprite.player.body.setVelocityY(this.SUPER_JUMP_VELOCITY);
+            }
+            
         }
 
         if(Phaser.Input.Keyboard.JustDown(this.rKey)) {

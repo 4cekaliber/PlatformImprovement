@@ -4,6 +4,7 @@ class Load extends Phaser.Scene {
     }
 
     preload() {
+
         this.load.setPath("./assets/");
 
         // Load characters spritesheet
@@ -19,6 +20,10 @@ class Load extends Phaser.Scene {
             frameHeight: 18
         });
 
+        this.load.image("first_coin","tile_0151.png");
+        this.load.image("second_coin","tile_0152.png");
+
+
         // Oooh, fancy. A multi atlas is a texture atlas which has the textures spread
         // across multiple png files, so as to keep their size small for use with
         // lower resource devices (like mobile phones).
@@ -29,6 +34,18 @@ class Load extends Phaser.Scene {
     }
 
     create() {
+
+        this.anims.create({
+            key: 'coinSpin',
+            frames: [
+                { key: "first_coin"},
+                {key: "second_coin"}
+            ],
+            frameRate: 13,
+            repeat: -1
+
+        });
+
         this.anims.create({
             key: 'walk',
             frames: this.anims.generateFrameNames('platformer_characters', {
@@ -61,6 +78,8 @@ class Load extends Phaser.Scene {
 
          // ...and pass to the next Scene
          this.scene.start("platformerScene");
+         
+
     }
 
     // Never get here since a new scene is started in create()
